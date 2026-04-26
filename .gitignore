@@ -1,0 +1,6 @@
+node_modules/
+data/submissions.json
+.env
+npm-debug.log*
+*.class
+*.log

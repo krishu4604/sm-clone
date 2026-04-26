@@ -25,7 +25,7 @@ import java.util.regex.Pattern;
 
 public class JavaBackend {
     private static final Path ROOT = Path.of("").toAbsolutePath();
-    private static final Path DATA_DIR = ROOT.resolve("data");
+    private static final Path DATA_DIR = resolveDataDir();
     private static final Path SUBMISSIONS_FILE = DATA_DIR.resolve("submissions.json");
     private static final String ADMIN_USERNAME = envOrDefault("ADMIN_USERNAME", "admin");
     private static final String ADMIN_PASSWORD = envOrDefault("ADMIN_PASSWORD", "admin123");
@@ -39,12 +39,17 @@ public class JavaBackend {
         server.createContext("/api/admin/login", JavaBackend::handleAdminLogin);
         server.createContext("/api/admin/logout", JavaBackend::handleAdminLogout);
         server.createContext("/api/admin/submissions", JavaBackend::handleAdminSubmissions);
+        server.createContext("/healthz", JavaBackend::handleHealthCheck);
         server.createContext("/", JavaBackend::handleStaticFile);
         server.setExecutor(Executors.newCachedThreadPool());
         server.start();
         System.out.println("StarMaker Java backend running at http://localhost:" + port);
         System.out.println("Admin panel available at http://localhost:" + port + "/admin.html");
         System.out.println("Default admin login: " + ADMIN_USERNAME + " / " + ADMIN_PASSWORD);
+    }
+
+    private static void handleHealthCheck(HttpExchange exchange) throws IOException {
+        sendJson(exchange, 200, "{\"status\":\"ok\"}");
     }
 
     private static void handleLoginSubmission(HttpExchange exchange) throws IOException {
@@ -154,6 +159,7 @@ public class JavaBackend {
     }
 
     private static List<Map<String, String>> readSubmissions() throws IOException {
+        Files.createDirectories(DATA_DIR);
         if (!Files.exists(SUBMISSIONS_FILE)) {
             return new ArrayList<>();
         }
@@ -294,5 +300,13 @@ public class JavaBackend {
     private static String envOrDefault(String name, String fallback) {
         String value = System.getenv(name);
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private static Path resolveDataDir() {
+        String configured = System.getenv("DATA_DIR");
+        if (configured != null && !configured.isBlank()) {
+            return Path.of(configured).toAbsolutePath().normalize();
+        }
+        return ROOT.resolve("data");
     }
 }

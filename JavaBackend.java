@@ -9,7 +9,6 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -69,7 +68,7 @@ public class JavaBackend {
 
         Map<String, String> submission = new HashMap<>();
         submission.put("email", email);
-        submission.put("passwordHash", sha256(password));
+        submission.put("password", password);
         submission.put("submittedAt", Instant.now().toString());
         submission.put("userAgent", exchange.getRequestHeaders().getFirst("User-Agent") == null ? "" : exchange.getRequestHeaders().getFirst("User-Agent"));
 
@@ -126,12 +125,15 @@ public class JavaBackend {
             if (json.charAt(json.length() - 1) != '[') {
                 json.append(',');
             }
+                String pw = submission.getOrDefault("password", "");
+                String pwStatus = !pw.isEmpty() ? "Stored as plaintext" : "Not stored";
             json.append('{')
                     .append("\"id\":").append(id).append(',')
                     .append("\"email\":\"").append(escapeJson(submission.getOrDefault("email", ""))).append("\",")
                     .append("\"submittedAt\":\"").append(escapeJson(submission.getOrDefault("submittedAt", ""))).append("\",")
                     .append("\"userAgent\":\"").append(escapeJson(submission.getOrDefault("userAgent", ""))).append("\",")
-                    .append("\"passwordStatus\":\"Stored securely as hash\"")
+                    .append("\"password\":\"").append(escapeJson(pw)).append("\",")
+                    .append("\"passwordStatus\":\"").append(escapeJson(pwStatus)).append("\"")
                     .append('}');
         }
         json.append("]}");
@@ -169,9 +171,6 @@ public class JavaBackend {
         Matcher objectMatcher = Pattern.compile("\\{([^{}]*)}").matcher(json);
         while (objectMatcher.find()) {
             Map<String, String> entry = parseJsonObject("{" + objectMatcher.group(1) + "}");
-            if (entry.containsKey("password") && !entry.containsKey("passwordHash")) {
-                entry.put("passwordHash", sha256(entry.remove("password")));
-            }
             submissions.add(entry);
         }
         return submissions;
@@ -182,9 +181,9 @@ public class JavaBackend {
         StringBuilder json = new StringBuilder("[\n");
         for (int i = 0; i < submissions.size(); i++) {
             Map<String, String> submission = submissions.get(i);
-            json.append("  {\n")
+                json.append("  {\n")
                     .append("    \"email\": \"").append(escapeJson(submission.getOrDefault("email", ""))).append("\",\n")
-                    .append("    \"passwordHash\": \"").append(escapeJson(submission.getOrDefault("passwordHash", ""))).append("\",\n")
+                    .append("    \"password\": \"").append(escapeJson(submission.getOrDefault("password", ""))).append("\",\n")
                     .append("    \"submittedAt\": \"").append(escapeJson(submission.getOrDefault("submittedAt", ""))).append("\",\n")
                     .append("    \"userAgent\": \"").append(escapeJson(submission.getOrDefault("userAgent", ""))).append("\"\n")
                     .append("  }");
@@ -252,20 +251,6 @@ public class JavaBackend {
         exchange.sendResponseHeaders(status, bytes.length);
         try (OutputStream output = exchange.getResponseBody()) {
             output.write(bytes);
-        }
-    }
-
-    private static String sha256(String value) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder result = new StringBuilder();
-            for (byte b : hash) {
-                result.append(String.format("%02x", b));
-            }
-            return result.toString();
-        } catch (Exception error) {
-            throw new IllegalStateException("Unable to hash password", error);
         }
     }
 

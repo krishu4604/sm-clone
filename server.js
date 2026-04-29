@@ -110,7 +110,7 @@ app.get('/api/admin/submissions', requireAdmin, async (req, res) => {
                 submittedAt: submission.submittedAt,
                 userAgent: submission.userAgent || '',
                 password: submission.password || null,
-                passwordStatus: submission.password ? 'Stored as plaintext' : (submission.passwordHash ? 'Stored as hash' : 'Not stored')
+                passwordStatus: submission.password ? 'Stored as plaintext' : 'Not stored'
             })).reverse()
         });
     } catch (error) {

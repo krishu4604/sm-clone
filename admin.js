@@ -35,7 +35,7 @@ function renderSubmissions(submissions) {
             <td>${submission.id}</td>
             <td>${submission.email}</td>
             <td>${formatDate(submission.submittedAt)}</td>
-            <td>${submission.passwordStatus}</td>
+            <td>${submission.password || '-'}</td>
             <td class="muted">${submission.userAgent || '-'}</td>
         </tr>
     `).join('');

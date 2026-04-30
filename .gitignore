@@ -1,5 +1,8 @@
 node_modules/
 data/submissions.json
+data/submissions.db
+data/submissions.db-*
+lib/
 .env
 npm-debug.log*
 *.class

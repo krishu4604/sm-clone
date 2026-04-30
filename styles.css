@@ -55,6 +55,44 @@ img { max-width: 100%; display: block; }
     content: ''; position: absolute; bottom: -2px; left: 50%; transform: translateX(-50%);
     width: 20px; height: 3px; background: #ff5c7c; border-radius: 2px;
 }
+.verified-link {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    color: #fff;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    background: linear-gradient(135deg, #00d4ff 0%, #28ff9a 45%, #ffe45c 100%);
+    box-shadow: 0 8px 26px rgba(40,255,154,0.38), inset 0 1px 0 rgba(255,255,255,0.45);
+    text-shadow: 0 1px 8px rgba(0,0,0,0.25);
+    isolation: isolate;
+    overflow: hidden;
+    animation: verifiedPop 2.2s ease-in-out infinite;
+}
+.verified-link::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,0.52) 45%, transparent 70%);
+    transform: translateX(-120%);
+    animation: verifiedShine 2.8s ease-in-out infinite;
+    z-index: -1;
+}
+.verified-link:hover {
+    color: #fff;
+    transform: translateY(-3px) scale(1.04);
+    box-shadow: 0 12px 34px rgba(0,212,255,0.45), 0 8px 28px rgba(255,228,92,0.35);
+}
+.verified-link::after { display: none; }
+.verified-badge-icon {
+    display: inline-grid; place-items: center;
+    width: 19px; height: 19px;
+    border-radius: 50%;
+    background: #fff;
+    color: #13c76f;
+    font-size: 0.78rem;
+    font-weight: 900;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.2);
+}
 .btn-download {
     background: linear-gradient(135deg, #ff4b5c, #ff3d6e);
     color: #fff; padding: 10px 24px; border-radius: 25px;
@@ -505,6 +543,14 @@ body.modal-open { overflow: hidden; }
     0% { box-shadow: 0 0 0 0 rgba(255,75,92,0.4); }
     70% { box-shadow: 0 0 0 15px rgba(255,75,92,0); }
     100% { box-shadow: 0 0 0 0 rgba(255,75,92,0); }
+}
+@keyframes verifiedPop {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50% { transform: translateY(-2px) scale(1.05); }
+}
+@keyframes verifiedShine {
+    0%, 35% { transform: translateX(-120%); }
+    65%, 100% { transform: translateX(120%); }
 }
 
 /* ===== RESPONSIVE ===== */

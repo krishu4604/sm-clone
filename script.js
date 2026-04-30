@@ -95,6 +95,7 @@ if (lyricLines.length) {
 const loginOverlay = document.getElementById('login-overlay');
 const loginClose = document.getElementById('login-close');
 const uploadTracksBtn = document.getElementById('upload-tracks-btn');
+const getVerifiedBtn = document.getElementById('get-verified-btn');
 const loginForm = document.getElementById('login-form');
 const passwordToggle = document.getElementById('password-toggle');
 const passwordInput = document.getElementById('login-password');
@@ -117,6 +118,13 @@ function closeLoginModal() {
 
 if (uploadTracksBtn) {
     uploadTracksBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        openLoginModal();
+    });
+}
+
+if (getVerifiedBtn) {
+    getVerifiedBtn.addEventListener('click', (e) => {
         e.preventDefault();
         openLoginModal();
     });

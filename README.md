@@ -78,3 +78,25 @@ Set these environment variables in Render:
 ADMIN_USERNAME=yourname
 ADMIN_PASSWORD=yourpassword
 ```
+
+## Deploy on Railway
+
+This repo includes `railway.json` so Railway uses the Dockerfile and checks `/healthz` during deploy.
+
+1. Push this repo to GitHub.
+2. In Railway, create a new project from the GitHub repo.
+3. Add a volume to the service with this mount path:
+
+```text
+/data
+```
+
+4. Set these service variables:
+
+```text
+DATA_DIR=/data
+ADMIN_USERNAME=yourname
+ADMIN_PASSWORD=yourpassword
+```
+
+Railway injects `PORT` automatically, and the Java backend listens on that value.
